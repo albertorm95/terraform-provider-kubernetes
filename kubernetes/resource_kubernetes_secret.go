@@ -25,7 +25,7 @@ func resourceKubernetesSecret() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"metadata": namespacedMetadataSchema("secret", true),
-			"data": {
+			"secret_data": {
 				Type:        schema.TypeMap,
 				Description: "A map of the secret data.",
 				Optional:    true,
@@ -65,7 +65,7 @@ func resourceKubernetesSecretCreate(d *schema.ResourceData, meta interface{}) er
 			secretData[lineSplitted[0]] = lineSplitted[1]
 		}
 	} else {
-		secretData = d.Get("data").(map[string]interface{})
+		secretData = d.Get("secret_data").(map[string]interface{})
 	}
 
 	secret := api.Secret{
@@ -130,8 +130,31 @@ func resourceKubernetesSecretUpdate(d *schema.ResourceData, meta interface{}) er
 	}
 
 	ops := patchMetadata("metadata.0.", "/metadata/", d)
-	if d.HasChange("data") {
-		oldV, newV := d.GetChange("data")
+
+	if d.HasChange("from_env_file") {
+		oldV, newV := d.GetChange("from_env_file")
+
+		newVchangedData := make(map[string]interface{})
+		for _, line := range strings.Split(newV.(string), "\n") {
+			lineSplitted := strings.Split(line, "=")
+			newVchangedData[lineSplitted[0]] = lineSplitted[1]
+		}
+
+		oldVchangedData := make(map[string]interface{})
+		for _, line := range strings.Split(oldV.(string), "\n") {
+			lineSplitted := strings.Split(line, "=")
+			oldVchangedData[lineSplitted[0]] = lineSplitted[1]
+		}
+
+		oldV = base64EncodeStringMap(oldVchangedData)
+		newV = base64EncodeStringMap(newVchangedData)
+
+		diffOps := diffStringMap("/data/", oldV.(map[string]interface{}), newV.(map[string]interface{}))
+
+		ops = append(ops, diffOps...)
+	}
+	if d.HasChange("secret_data") {
+		oldV, newV := d.GetChange("secret_data")
 
 		oldV = base64EncodeStringMap(oldV.(map[string]interface{}))
 		newV = base64EncodeStringMap(newV.(map[string]interface{}))
